@@ -1,0 +1,9 @@
+maubot: 0.1.0
+id: com.github.pkorba.imdb
+version: 1.0.0
+license: MIT
+modules:
+  - imdb
+dependencies:
+  - beautifulsoup4 >= 4.13.4
+main_class: ImdbBot
