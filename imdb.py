@@ -94,12 +94,12 @@ class ImdbBot(Plugin):
         except Exception as e:
             self.log.error(f"Preparing image: Unknown error: {image}: {e}")
 
-        body = (f"> ### {title} (url)\n> {description}\n"
+        body = (f"> ### [{title}](url)\n> {description}  \n"
                 f"> \n"
-                f"> > **⭐ Rating:** {rating}\n"
-                f"> > **Runtime:** {time}\n"
-                f"> > **Age restriction:** {age}\n"
-                f"> > **Tags:** {tags}\n"
+                f"> > **Rating:** {rating} ⭐  \n"
+                f"> > **Runtime:** {time}  \n"
+                f"> > **Age restriction:** {age}  \n"
+                f"> > **Tags:** {tags}  \n"
                 f"> > \n"
                 f"> > **{video_type} ・ Results from IMDb**")
 
@@ -109,12 +109,12 @@ class ImdbBot(Plugin):
                         f"<h3>{title}</h3>"
                     f"</a>"
                     f"<p>{description}</p>"
-                    f"<blockquote><b>⭐ Rating:</b> {rating}</blockquote>"
+                    f"<blockquote><b>Rating:</b> {rating} ⭐</blockquote>"
                     f"<blockquote><b>Runtime:</b> {time}</blockquote>"
                     f"<blockquote><b>Age restriction:</b> {age}</blockquote>"
                     f"<blockquote><b>Tags:</b> {tags}</blockquote>"
                     f"<img src=\"{image_uri}\" width=\"300\" /><br>"
-                    f"<b><sub>{video_type} ・ Results from IMDb</sub></b>"
+                    f"<p><b><sub>{video_type} ・ Results from IMDb</sub></b></p>"
                     f"</blockquote>"
                 f"</div>")
 
