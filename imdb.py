@@ -11,8 +11,7 @@ class ImdbBot(Plugin):
             "Sec-GPC": "1",
             "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": "pl,en-US;q=0.7,en;q=0.3",
-            "user-agent": "Mozilla/5.0 (X11; Linux x86_64; rv:138.0) Gecko/20100101 Firefox/138.0",
-            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0",
             "referer": "https://duckduckgo.com/"
         }
 
@@ -94,33 +93,36 @@ class ImdbBot(Plugin):
         except Exception as e:
             self.log.error(f"Preparing image: Unknown error: {image}: {e}")
 
-        body = (f"> ### [{title}](url)\n> {description}  \n"
-                f"> \n"
-                f"> > **Rating:** {rating} ⭐  \n"
-                f"> > **Runtime:** {time}  \n"
-                f"> > **Age restriction:** {age}  \n"
-                f"> > **Tags:** {tags}  \n"
-                f"> > \n"
-                f"> > **{video_type} ・ Results from IMDb**")
+        body = (
+            f"> ### [{title}](url)\n> {description}  \n"
+            f"> \n"
+            f"> > **Rating:** {rating} ⭐  \n"
+            f"> > **Runtime:** {time}  \n"
+            f"> > **Age restriction:** {age}  \n"
+            f"> > **Tags:** {tags}  \n"
+            f"> > \n"
+            f"> > **{video_type} ・ Results from IMDb**"
+        )
 
-        html = (f"<div>"
-                    f"<blockquote>"
-                    f"<a href=\"{url}\">"
-                        f"<h3>{title}</h3>"
-                    f"</a>"
-                    f"<p>{description}</p>"
-                    f"<blockquote><b>Rating:</b> {rating} ⭐</blockquote>"
-                    f"<blockquote><b>Runtime:</b> {time}</blockquote>"
-                    f"<blockquote><b>Age restriction:</b> {age}</blockquote>"
-                    f"<blockquote><b>Tags:</b> {tags}</blockquote>"
-                    f"<img src=\"{image_uri}\" width=\"300\" /><br>"
-                    f"<p><b><sub>{video_type} ・ Results from IMDb</sub></b></p>"
-                    f"</blockquote>"
-                f"</div>")
+        html = (
+            f"<div>"
+            f"<blockquote>"
+            f"<a href=\"{url}\">"
+            f"<h3>{title}</h3>"
+            f"</a>"
+            f"<p>{description}</p>"
+            f"<blockquote><b>Rating:</b> {rating} ⭐</blockquote>"
+            f"<blockquote><b>Runtime:</b> {time}</blockquote>"
+            f"<blockquote><b>Age restriction:</b> {age}</blockquote>"
+            f"<blockquote><b>Tags:</b> {tags}</blockquote>"
+            f"<img src=\"{image_uri}\" width=\"300\" /><br>"
+            f"<p><b><sub>{video_type} ・ Results from IMDb</sub></b></p>"
+            f"</blockquote>"
+            f"</div>"
+        )
 
-        content = TextMessageEventContent(
+        return TextMessageEventContent(
             msgtype=MessageType.NOTICE,
             format=Format.HTML,
             body=body,
             formatted_body=html)
-        return content
