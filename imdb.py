@@ -94,14 +94,14 @@ class ImdbBot(Plugin):
             self.log.error(f"Preparing image: Unknown error: {image}: {e}")
 
         body = (
-            f"> ### [{title}](url)\n> {description}  \n"
+            f"> ### [{title}]({url})\n> {description}  \n"
             f"> \n"
             f"> > **Rating:** {rating} ⭐  \n"
             f"> > **Runtime:** {time}  \n"
             f"> > **Age restriction:** {age}  \n"
             f"> > **Tags:** {tags}  \n"
-            f"> > \n"
-            f"> > **{video_type} ・ Results from IMDb**"
+            f"> \n"
+            f"> **{video_type} ・ Results from IMDb**"
         )
 
         html = (
