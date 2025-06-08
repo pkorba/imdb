@@ -217,7 +217,7 @@ class ImdbBot(Plugin):
         roles = info[1].strip() if len(info) > 1 else "-"
         description = soup.find("div", attrs={"data-testid": "bio-content"})
         if description:
-            for line_break in description.find_all('br'):
+            for line_break in description.find_all("br"):
                 line_break.replace_with("###")
             description = list(filter(None, description.get_text().split("###")))
             description = [s.replace("\n", " ") for s in description]
