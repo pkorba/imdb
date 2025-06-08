@@ -1,4 +1,1 @@
-searxng_on: False
-searxng_url: "http://127.0.0.1"
-searxng_port: 8080
 max_results: 1
