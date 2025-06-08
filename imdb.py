@@ -3,17 +3,31 @@ import mimetypes
 from maubot import Plugin, MessageEvent
 from maubot.handlers import command
 from mautrix.types import TextMessageEventContent, MessageType, Format
+from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
+from typing import Type, Tuple
 from bs4 import BeautifulSoup
+
+
+class Config(BaseProxyConfig):
+    def do_update(self, helper: ConfigUpdateHelper) -> None:
+        helper.copy("searxng_on")
+        helper.copy("searxng_url")
+        helper.copy("searxng_port")
+        helper.copy("max_results")
 
 
 class ImdbBot(Plugin):
     headers = {
             "Sec-GPC": "1",
             "accept-encoding": "gzip, deflate, br, zstd",
-            "accept-language": "pl,en-US;q=0.7,en;q=0.3",
+            "accept-language": "en,en-US;q=0.5",
             "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0",
             "referer": "https://duckduckgo.com/"
         }
+
+    async def start(self) -> None:
+        await super().start()
+        self.config.load_and_update()
 
     @command.new(name="imdb", help="IMDb Search")
     @command.argument("title", pass_raw=True, required=True)
@@ -24,19 +38,81 @@ class ImdbBot(Plugin):
             await evt.respond("Usage: !imdb <title>")
             return
 
-        url = await self.web_search("site:imdb.com", title)
-        if not url or url == "https://www.imdb.com/":
+        urls = await self.web_search(title)
+        if not urls:
             await evt.reply(f"Failed to find results for *{title}*")
             return
 
-        content = await self.prepare_message(url)
+        content = await self.prepare_message(urls)
         if content:
             await evt.reply(content)
         else:
             await evt.reply("Something went wrong when I was preparing summary.")
 
-    async def web_search(self, modifier: str, query: str) -> str:
-        url = f"https://lite.duckduckgo.com/lite/?q=\\+{modifier}+{query}"
+    async def web_search(self, modifier: str, query: str) -> list[Tuple[str, str]]:
+        if self.config["searxng_on"]:
+            return await self.searxng_search(query)
+        return await self.ddg_search(query)
+
+    async def searxng_search(self, query: str) -> list[Tuple[str, str]]:
+        url = self.config["searxng_url"] if self.config["searxng_url"] else "http://127.0.0.1"
+        port = self.config["searxng_port"] if self.config["searxng_port"] else 8080
+        max_results = self.config["max_results"] if self.config["max_results"] else 4
+        params = {
+            "q": query,
+            "format": "json",
+            "engines": "imdb",
+            "language": "en"
+        }
+        try:
+            timeout = aiohttp.ClientTimeout(total=20)
+            response = await self.http.get(url, params=params, timeout=timeout, allow_redirects=True, raise_for_status=True)
+            results = await response.json()
+        except aiohttp.ClientError as e:
+            self.log.error(f"Web search: Connection failed: {e}")
+            return []
+        max_results = max_results if len(results) >= max_results else len(results)
+        results_short = []
+        for i in range(0, max_results):
+            results_short.append((results[i]['title'], results[i]['url']))
+        return results_short
+
+    async def ddg_search(self, query: str) -> list[Tuple[str, str]]:
+        max_results = self.config["max_results"] if self.config["max_results"] else 4
+        query = "site:imdb.com " + query
+        params = {
+            "q": query,
+            "kd": "-1",  # Redirect off
+            "k1": "-1",  # Ads off
+            "kl": "en-us"
+        }
+        url = f"https://lite.duckduckgo.com/lite/"
+        try:
+            timeout = aiohttp.ClientTimeout(total=20)
+            response = await self.http.get(url, headers=ImdbBot.headers, params=params, timeout=timeout, raise_for_status=True)
+            res_text = await response.text()
+        except aiohttp.ClientError as e:
+            self.log.error(f"Connection failed: {e}")
+            return []
+
+        soup = BeautifulSoup(res_text, "html.parser")
+        if not soup:
+            self.log.error("Failed to parse the source.")
+            return []
+        links = soup.find_all("a", class_="result-link", limit=max_results)
+        if not links:
+            self.log.error("Failed to find the link.")
+            return []
+        results = []
+        for link in links:
+            # When there are no results, DDG returns a link to Google Search with EOT title
+            if link.text == "EOF" and (link["href"].startswith("http://www.google.com/search") or link["href"].startswith("https://www.google.com/search")):
+                break
+            results.append((link.text, link["href"]))
+        return results
+
+    async def ddg_search2(self, query: str) -> str:
+        url = f"https://lite.duckduckgo.com/lite/?q=\\+site:imdb.com+{query}"
         try:
             timeout = aiohttp.ClientTimeout(total=20)
             response = await self.http.get(url, headers=ImdbBot.headers, timeout=timeout, allow_redirects=True, raise_for_status=True)
@@ -47,10 +123,11 @@ class ImdbBot(Plugin):
             self.log.error(f"Web search: Connection failed: {e}")
         return ""
 
-    async def prepare_message(self, url: str) -> TextMessageEventContent | None:
+    async def prepare_message(self, urls: list[Tuple[str, str]]) -> TextMessageEventContent | None:
+        main_result = urls[0]
         timeout = aiohttp.ClientTimeout(total=20)
         try:
-            response = await self.http.get(url, headers=ImdbBot.headers, timeout=timeout, raise_for_status=True)
+            response = await self.http.get(main_result[1], headers=ImdbBot.headers, timeout=timeout, raise_for_status=True)
             text = await response.text()
         except aiohttp.ClientError as e:
             self.log.error(f"Scraping IMDb: Connection failed: {e}")
@@ -94,29 +171,48 @@ class ImdbBot(Plugin):
             self.log.error(f"Preparing image: Unknown error: {image}: {e}")
 
         body = (
-            f"> ### [{title}]({url})\n> {description}  \n"
+            f"> ### [{title}]({main_result[1]})\n> {description}  \n"
             f"> \n"
             f"> > **Rating:** {rating} ⭐  \n"
+            f"> > **Type:** {video_type}  \n"
             f"> > **Runtime:** {time}  \n"
             f"> > **Age restriction:** {age}  \n"
             f"> > **Tags:** {tags}  \n"
-            f"> \n"
-            f"> **{video_type} ・ Results from IMDb**"
         )
 
         html = (
             f"<div>"
             f"<blockquote>"
-            f"<a href=\"{url}\">"
+            f"<a href=\"{main_result[1]}\">"
             f"<h3>{title}</h3>"
             f"</a>"
             f"<p>{description}</p>"
             f"<blockquote><b>Rating:</b> {rating} ⭐</blockquote>"
+            f"<blockquote><b>Type:</b> {video_type}</blockquote>"
             f"<blockquote><b>Runtime:</b> {time}</blockquote>"
             f"<blockquote><b>Age restriction:</b> {age}</blockquote>"
             f"<blockquote><b>Tags:</b> {tags}</blockquote>"
             f"<img src=\"{image_uri}\" width=\"300\" /><br>"
-            f"<p><b><sub>{video_type} ・ Results from IMDb</sub></b></p>"
+        )
+
+        if len(urls) > 1:
+            body += f"> **Other results:**  \n"
+            html += (
+                f"<details>"
+                f"<br><summary><b>Other results:</b></summary>"
+            )
+            for i in range (1, len(urls)):
+                body += f"> > {i}. [{urls[i][0]}]({urls[i][1]})  \n"
+                html += f"<blockquote><a href=\"{urls[i][1]}\">{i}. {urls[i][0]}</a></blockquote>"
+            html+= "</details>"
+
+        body += (
+            f"> \n"
+            f"> **Results from IMDb**"
+        )
+
+        html += (
+            f"<p><b><sub>Results from IMDb</sub></b></p>"
             f"</blockquote>"
             f"</div>"
         )
@@ -126,3 +222,7 @@ class ImdbBot(Plugin):
             format=Format.HTML,
             body=body,
             formatted_body=html)
+
+    @classmethod
+    def get_config_class(cls) -> Type[BaseProxyConfig]:
+        return Config
