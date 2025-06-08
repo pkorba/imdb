@@ -49,14 +49,14 @@ class ImdbBot(Plugin):
         else:
             await evt.reply("Something went wrong when I was preparing summary.")
 
-    async def web_search(self, modifier: str, query: str) -> list[Tuple[str, str]]:
+    async def web_search(self, query: str) -> list[Tuple[str, str]]:
         if self.config["searxng_on"]:
             return await self.searxng_search(query)
         return await self.ddg_search(query)
 
     async def searxng_search(self, query: str) -> list[Tuple[str, str]]:
-        url = self.config["searxng_url"] if self.config["searxng_url"] else "http://127.0.0.1"
         port = self.config["searxng_port"] if self.config["searxng_port"] else 8080
+        url = f"{self.config["searxng_url"]}:{port}" if self.config["searxng_url"] else f"http://127.0.0.1:{port}"
         max_results = self.config["max_results"] if self.config["max_results"] else 4
         params = {
             "q": query,
@@ -67,10 +67,11 @@ class ImdbBot(Plugin):
         try:
             timeout = aiohttp.ClientTimeout(total=20)
             response = await self.http.get(url, params=params, timeout=timeout, allow_redirects=True, raise_for_status=True)
-            results = await response.json()
+            response_json = await response.json()
         except aiohttp.ClientError as e:
             self.log.error(f"Web search: Connection failed: {e}")
             return []
+        results = response_json["results"]
         max_results = max_results if len(results) >= max_results else len(results)
         results_short = []
         for i in range(0, max_results):
@@ -79,7 +80,7 @@ class ImdbBot(Plugin):
 
     async def ddg_search(self, query: str) -> list[Tuple[str, str]]:
         max_results = self.config["max_results"] if self.config["max_results"] else 4
-        query = "site:imdb.com " + query
+        query = "site:imdb.com/title " + query
         params = {
             "q": query,
             "kd": "-1",  # Redirect off
@@ -108,11 +109,11 @@ class ImdbBot(Plugin):
             # When there are no results, DDG returns a link to Google Search with EOT title
             if link.text == "EOF" and (link["href"].startswith("http://www.google.com/search") or link["href"].startswith("https://www.google.com/search")):
                 break
-            results.append((link.text, link["href"]))
+            results.append((link.text.rstrip("- IMDb"), link["href"]))
         return results
 
     async def ddg_search2(self, query: str) -> str:
-        url = f"https://lite.duckduckgo.com/lite/?q=\\+site:imdb.com+{query}"
+        url = f"https://lite.duckduckgo.com/lite/?q=\\+site:imdb.com/title+{query}"
         try:
             timeout = aiohttp.ClientTimeout(total=20)
             response = await self.http.get(url, headers=ImdbBot.headers, timeout=timeout, allow_redirects=True, raise_for_status=True)
@@ -203,7 +204,7 @@ class ImdbBot(Plugin):
             )
             for i in range (1, len(urls)):
                 body += f"> > {i}. [{urls[i][0]}]({urls[i][1]})  \n"
-                html += f"<blockquote><a href=\"{urls[i][1]}\">{i}. {urls[i][0]}</a></blockquote>"
+                html += f"<blockquote>{i}. <a href=\"{urls[i][1]}\">{urls[i][0]}</a></blockquote>"
             html+= "</details>"
 
         body += (
