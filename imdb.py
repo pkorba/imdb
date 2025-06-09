@@ -72,7 +72,7 @@ class ImdbBot(Plugin):
 
     async def imdb_search(self, query: str, query_type: QueryType) -> list[Tuple[str, str, str]]:
         query = query.replace(" ", "_").lower()
-        max_results = self.config["max_results"] if self.config["max_results"] else 4
+        max_results = self.get_max_results()
         api_url = f"https://v2.sg.media-imdb.com/suggestion/{query[0]}/{query}.json"
         title_types = ["tvSeries", "short", "movie", "tvMiniSeries"]
         try:
@@ -121,7 +121,7 @@ class ImdbBot(Plugin):
         title = title_rating[0] if title_rating else ""
         video_type = main_result[1] if main_result[1] != "feature" else "Movie"
         description = soup.head.find("meta", attrs={"name": "description"})
-        description = description["content"] if description else "-"
+        description = description["content"] if description else ""
         time_age = soup.head.find("meta", property="og:description")
         time_age = time_age["content"] if time_age else ""
         time_age = time_age.split("|") if "|" in time_age else ""
@@ -167,8 +167,9 @@ class ImdbBot(Plugin):
             f"<blockquote><b>Runtime:</b> {time}</blockquote>"
             f"<blockquote><b>Age restriction:</b> {age}</blockquote>"
             f"<blockquote><b>Tags:</b> {tags}</blockquote>"
-            f"<img src=\"{image_uri}\" width=\"300\" /><br>"
         )
+        if image_uri:
+            html += f"<img src=\"{image_uri}\" width=\"300\" /><br>"
 
         if len(urls) > 1:
             body += f"> **Other results:**  \n"
@@ -263,10 +264,9 @@ class ImdbBot(Plugin):
                 f"<p>{"<br><br>".join(description[1:])}</p>"
                 f"</details>"
         )
-        html += (
-            f"<blockquote><b>Roles:</b> {roles}</blockquote>"
-            f"<img src=\"{image_uri}\" width=\"300\" /><br>"
-        )
+        html += f"<blockquote><b>Roles:</b> {roles}</blockquote>"
+        if image_uri:
+            html += f"<img src=\"{image_uri}\" width=\"300\" /><br>"
 
         if len(urls) > 1:
             body += f"> **Other results:**  \n"
@@ -283,7 +283,6 @@ class ImdbBot(Plugin):
             f"> \n"
             f"> **Results from IMDb**"
         )
-
         html += (
             f"<p><b><sub>Results from IMDb</sub></b></p>"
             f"</blockquote>"
@@ -295,6 +294,14 @@ class ImdbBot(Plugin):
             format=Format.HTML,
             body=body,
             formatted_body=html)
+
+    def get_max_results(self) -> int:
+        try:
+            max_results = int(self.config.get("max_results", 4))
+        except ValueError:
+            self.log.error("Incorrect 'max_results' config value. Setting default value of 4.")
+            max_results = 4
+        return max_results
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
