@@ -298,6 +298,7 @@ class ImdbBot(Plugin):
     def get_max_results(self) -> int:
         try:
             max_results = int(self.config.get("max_results", 4))
+            max_results = 1 if max_results < 1 else max_results
         except ValueError:
             self.log.error("Incorrect 'max_results' config value. Setting default value of 4.")
             max_results = 4
