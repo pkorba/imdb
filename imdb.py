@@ -19,7 +19,8 @@ class ImdbTitleData:
         self.description = "",
         self.time = "",
         self.age = "",
-        self.image = ""
+        self.image = "",
+        self.seasons = 0
 
 
 class ImdbPersonData:
@@ -141,6 +142,13 @@ class ImdbBot(Plugin):
         data.age = time_age[1].strip() if time_age else "-"
         image = page.xpath("//meta[@property='og:image']/@content")
         data.image = image[0] if image else ""
+        if video_type[:2].upper() == "TV":
+            seasons = page.xpath("//select[@id='browse-episodes-season']/@aria-label")
+            seasons = seasons[0].split() if seasons else None
+            try:
+                data.seasons = int(seasons[0]) if seasons else 1
+            except ValueError:
+                pass
         return data
 
     async def prepare_title_message(self, urls: list[Tuple[str, str, str]]) -> TextMessageEventContent | None:
@@ -159,9 +167,6 @@ class ImdbBot(Plugin):
             f"> \n"
             f"> > **Rating:** {title_data.rating} ⭐  \n"
             f"> > **Type:** {title_data.video_type}  \n"
-            f"> > **Runtime:** {title_data.time}  \n"
-            f"> > **Age restriction:** {title_data.age}  \n"
-            f"> > **Tags:** {title_data.tags}  \n"
         )
         html_msg = (
             f"<div>"
@@ -172,6 +177,18 @@ class ImdbBot(Plugin):
             f"<p>{title_data.description}</p>"
             f"<blockquote><b>Rating:</b> {title_data.rating} ⭐</blockquote>"
             f"<blockquote><b>Type:</b> {title_data.video_type}</blockquote>"
+        )
+        if title_data.seasons:
+            body_seasons = [f"[{i + 1}]({main_result[2]}episodes/?season={i + 1})" for i in range(0, title_data.seasons)]
+            html_seasons = [f"<a href=\"{main_result[2]}episodes/?season={i + 1}\">{i + 1}</a>" for i in range(0, title_data.seasons)]
+            body += f"> > **Seasons:** {', '.join(body_seasons)}  \n"
+            html_msg += f"<blockquote><b>Seasons:</b> {', '.join(html_seasons)}</blockquote>"
+        body += (
+            f"> > **Runtime:** {title_data.time}  \n"
+            f"> > **Age restriction:** {title_data.age}  \n"
+            f"> > **Tags:** {title_data.tags}  \n"
+        )
+        html_msg += (
             f"<blockquote><b>Runtime:</b> {title_data.time}</blockquote>"
             f"<blockquote><b>Age restriction:</b> {title_data.age}</blockquote>"
             f"<blockquote><b>Tags:</b> {title_data.tags}</blockquote>"
