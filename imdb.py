@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 import mimetypes
 from enum import Enum
@@ -6,7 +7,27 @@ from maubot.handlers import command
 from mautrix.types import TextMessageEventContent, MessageType, Format
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from typing import Type, Tuple
-from bs4 import BeautifulSoup
+from lxml import html
+
+
+class ImdbTitleData:
+    def __init__(self) -> None:
+        self.title = "",
+        self.rating = "",
+        self.tags = ""
+        self.video_type = "",
+        self.description = "",
+        self.time = "",
+        self.age = "",
+        self.image = ""
+
+
+class ImdbPersonData:
+    def __init__(self) -> None:
+        self.name = "",
+        self.roles = "",
+        self.description = "",
+        self.image = ""
 
 
 class Config(BaseProxyConfig):
@@ -27,7 +48,7 @@ class ImdbBot(Plugin):
         await super().start()
         self.config.load_and_update()
 
-    @command.new(name="imdb", help="IMDb Search - search for titles of movies and TV series", require_subcommand=False, arg_fallthrough=False)
+    @command.new(name="imdb", help="Search for titles of movies and TV series on IMDb", require_subcommand=False, arg_fallthrough=False)
     @command.argument("title", pass_raw=True, required=True)
     async def imdb(self, evt: MessageEvent, title: str) -> None:
         await evt.mark_read()
@@ -49,7 +70,7 @@ class ImdbBot(Plugin):
         else:
             await evt.reply("Something went wrong when I was preparing summary.")
 
-    @imdb.subcommand("person", help="Search for people")
+    @imdb.subcommand("person", help="Search for people on IMDb")
     @command.argument("name", pass_raw=True, required=True)
     async def imdb_people(self, evt: MessageEvent, name: str) -> None:
         await evt.mark_read()
@@ -64,7 +85,7 @@ class ImdbBot(Plugin):
             await evt.reply(f"Failed to find results for *{name}*")
             return
 
-        content = await self.prepare_character_message(urls)
+        content = await self.prepare_person_message(urls)
         if content:
             await evt.reply(content)
         else:
@@ -72,12 +93,11 @@ class ImdbBot(Plugin):
 
     async def imdb_search(self, query: str, query_type: QueryType) -> list[Tuple[str, str, str]]:
         query = query.replace(" ", "_").lower()
-        max_results = self.get_max_results()
         api_url = f"https://v2.sg.media-imdb.com/suggestion/{query[0]}/{query}.json"
         title_types = ["tvSeries", "short", "movie", "tvMiniSeries"]
         try:
             timeout = aiohttp.ClientTimeout(total=20)
-            response = await self.http.get(api_url, headers=ImdbBot.headers, timeout=timeout, raise_for_status=True)
+            response = await self.http.get(api_url, headers=self.headers, timeout=timeout, raise_for_status=True)
             response_json = await response.json()
         except aiohttp.ClientError as e:
             self.log.error(f"Connection failed: {e}")
@@ -88,106 +108,94 @@ class ImdbBot(Plugin):
         else:
             base_url = "https://www.imdb.com/name/{id}/"
             results = [elem for elem in response_json["d"] if elem["id"][:2] == "nm"]
-        max_results = max_results if len(results) >= max_results else len(results)
+        max_results = min(self.get_max_results(), len(results))
         results_short = []
         for i in range(0, max_results):
             if query_type == self.QueryType.title:
-                additional_info = results[i].get("q","")
+                additional_info = results[i].get("q", "")
             else:
                 additional_info = results[i].get("s", "-")
             results_short.append((results[i]["l"], additional_info, base_url.format(id=results[i]["id"])))
         return results_short
 
-    async def prepare_title_message(self, urls: list[Tuple[str, str, str]]) -> TextMessageEventContent | None:
-        main_result = urls[0]
-        timeout = aiohttp.ClientTimeout(total=20)
-        try:
-            response = await self.http.get(main_result[2], headers=ImdbBot.headers, timeout=timeout, raise_for_status=True)
-            text = await response.text()
-        except aiohttp.ClientError as e:
-            self.log.error(f"Scraping IMDb: Connection failed: {e}")
+    def get_title_data(self, text: str, video_type: str) -> ImdbTitleData | None:
+        data = ImdbTitleData()
+        page = html.fromstring(text)
+        if not page:
             return None
-
-        soup = BeautifulSoup(text, "html.parser")
-        if soup.head is None:
-            return None
-        info = soup.head.find("meta", property="og:title")
-        info = info["content"] if info else ""
+        info = page.xpath("//meta[@property='og:title']/@content")
+        info = info[0] if info else ""
         info = info.split("|") if "|" in info else ""
         title = info[0].strip() if info else ""
-        tags = info[1].strip() if info else ""
+        data.tags = info[1].strip() if info else ""
         title_rating = title.split("⭐") if "⭐" in title else ""
-        rating = title_rating[1] + "/10" if title_rating else "-/10"
-        title = title_rating[0] if title_rating else ""
-        video_type = main_result[1] if main_result[1] != "feature" else "Movie"
-        description = soup.head.find("meta", attrs={"name": "description"})
-        description = description["content"] if description else ""
-        time_age = soup.head.find("meta", property="og:description")
-        time_age = time_age["content"] if time_age else ""
+        data.rating = title_rating[1] + "/10" if title_rating else "-/10"
+        data.title = title_rating[0] if title_rating else ""
+        data.video_type = video_type if video_type != "feature" else "Movie"
+        description = page.xpath("//meta[@name='description']/@content")
+        data.description = description[0] if description else ""
+        time_age = page.xpath("//meta[@property='og:description']/@content")
+        time_age = time_age[0] if time_age else ""
         time_age = time_age.split("|") if "|" in time_age else ""
-        time = time_age[0].strip() if time_age else "-"
-        age = time_age[1].strip() if time_age else "-"
-        image = soup.head.find("meta", property="og:image")
-        image = image["content"] if image else ""
-        image_uri = ""
+        data.time = time_age[0].strip() if time_age else "-"
+        data.age = time_age[1].strip() if time_age else "-"
+        image = page.xpath("//meta[@property='og:image']/@content")
+        data.image = image[0] if image else ""
+        return data
 
-        try:
-            response = await self.http.get(image, raise_for_status=True)
-            data = await response.read()
-            content_type = response.content_type
-            extension = mimetypes.guess_extension(content_type)
-            image_uri = await self.client.upload_media(
-                data=data,
-                mime_type=content_type,
-                filename=f"image{extension}",
-                size=len(data))
-        except aiohttp.ClientError as e:
-            self.log.error(f"Preparing image: Connection failed: {image}: {e}")
-        except Exception as e:
-            self.log.error(f"Preparing image: Unknown error: {image}: {e}")
+    async def prepare_title_message(self, urls: list[Tuple[str, str, str]]) -> TextMessageEventContent | None:
+        main_result = urls[0]
+        text = await self.get_page_text(main_result[2])
+        if not text:
+            return None
+        title_data = await asyncio.get_running_loop().run_in_executor(None, self.get_title_data, text, main_result[1])
+        if not title_data:
+            return None
+        image_url = await self.get_resized_image_url(title_data.image)
+        image_mxc = await self.get_matrix_image_url(image_url)
 
         body = (
-            f"> ### [{title}]({main_result[2]})\n> {description}  \n"
+            f"> ### [{title_data.title}]({main_result[2]})\n> {title_data.description}  \n"
             f"> \n"
-            f"> > **Rating:** {rating} ⭐  \n"
-            f"> > **Type:** {video_type}  \n"
-            f"> > **Runtime:** {time}  \n"
-            f"> > **Age restriction:** {age}  \n"
-            f"> > **Tags:** {tags}  \n"
+            f"> > **Rating:** {title_data.rating} ⭐  \n"
+            f"> > **Type:** {title_data.video_type}  \n"
+            f"> > **Runtime:** {title_data.time}  \n"
+            f"> > **Age restriction:** {title_data.age}  \n"
+            f"> > **Tags:** {title_data.tags}  \n"
         )
-        html = (
+        html_msg = (
             f"<div>"
             f"<blockquote>"
             f"<a href=\"{main_result[2]}\">"
-            f"<h3>{title}</h3>"
+            f"<h3>{title_data.title}</h3>"
             f"</a>"
-            f"<p>{description}</p>"
-            f"<blockquote><b>Rating:</b> {rating} ⭐</blockquote>"
-            f"<blockquote><b>Type:</b> {video_type}</blockquote>"
-            f"<blockquote><b>Runtime:</b> {time}</blockquote>"
-            f"<blockquote><b>Age restriction:</b> {age}</blockquote>"
-            f"<blockquote><b>Tags:</b> {tags}</blockquote>"
+            f"<p>{title_data.description}</p>"
+            f"<blockquote><b>Rating:</b> {title_data.rating} ⭐</blockquote>"
+            f"<blockquote><b>Type:</b> {title_data.video_type}</blockquote>"
+            f"<blockquote><b>Runtime:</b> {title_data.time}</blockquote>"
+            f"<blockquote><b>Age restriction:</b> {title_data.age}</blockquote>"
+            f"<blockquote><b>Tags:</b> {title_data.tags}</blockquote>"
         )
-        if image_uri:
-            html += f"<img src=\"{image_uri}\" width=\"300\" /><br>"
+        if image_mxc:
+            html_msg += f"<img src=\"{image_mxc}\" width=\"300\" /><br>"
 
         if len(urls) > 1:
             body += f"> **Other results:**  \n"
-            html += (
+            html_msg += (
                 f"<details>"
                 f"<br><summary><b>Other results:</b></summary>"
             )
-            for i in range (1, len(urls)):
+            for i in range(1, len(urls)):
                 video_type_other = main_result[1] if main_result[1] != "feature" else "Movie"
                 body += f"> > {i}. [{urls[i][0]}]({urls[i][2]}) ({video_type_other}) \n"
-                html += f"<blockquote>{i}. <a href=\"{urls[i][2]}\">{urls[i][0]}</a> ({video_type_other})</blockquote>"
-            html+= "</details>"
+                html_msg += f"<blockquote>{i}. <a href=\"{urls[i][2]}\">{urls[i][0]}</a> ({video_type_other})</blockquote>"
+            html_msg += "</details>"
 
         body += (
             f"> \n"
             f"> **Results from IMDb**"
         )
-        html += (
+        html_msg += (
             f"<p><b><sub>Results from IMDb</sub></b></p>"
             f"</blockquote>"
             f"</div>"
@@ -197,93 +205,82 @@ class ImdbBot(Plugin):
             msgtype=MessageType.NOTICE,
             format=Format.HTML,
             body=body,
-            formatted_body=html)
+            formatted_body=html_msg)
 
-    async def prepare_character_message(self, urls: list[Tuple[str, str, str]]) -> TextMessageEventContent | None:
-        main_result = urls[0]
-        timeout = aiohttp.ClientTimeout(total=20)
-        try:
-            response = await self.http.get(main_result[2], headers=ImdbBot.headers, timeout=timeout, raise_for_status=True)
-            text = await response.text()
-        except aiohttp.ClientError as e:
-            self.log.error(f"Scraping IMDb: Connection failed: {e}")
+    def get_person_data(self, text: str) -> ImdbPersonData | None:
+        data = ImdbPersonData()
+        page = html.fromstring(text)
+        if not page:
             return None
-
-        soup = BeautifulSoup(text, "html.parser")
-        if soup.head is None:
-            return None
-        info = soup.head.find("meta", property="og:title")
-        info = info["content"].split("|") if info else ""
-        name = info[0].strip() if info else "-"
-        roles = info[1].strip() if len(info) > 1 else "-"
-        description = soup.find("div", attrs={"data-testid": "bio-content"})
-        if description:
-            for line_break in description.find_all("br"):
-                line_break.replace_with("###")
-            description = list(filter(None, description.get_text().split("###")))
-            description = [s.replace("\n", " ") for s in description]
+        info = page.xpath("//meta[@property='og:title']/@content")
+        info = info[0].split("|") if info else ""
+        data.name = info[0].strip() if info else "-"
+        data.roles = info[1].strip() if len(info) > 1 else "-"
+        description = page.xpath("//div[@data-testid='bio-content']")
+        description = description[0] if description else None
+        if description is not None:
+            for line_break in description.xpath("//br"):
+                line_break.tail = "###" + line_break.tail if line_break.tail else "###"
+            description = list(filter(None, description.text_content().split("###")))
+            data.description = [s.replace("\n", " ") for s in description]
         else:
-            description = [""]
-        image = soup.head.find("meta", property="og:image")
-        image = image["content"] if image else ""
-        image_uri = ""
+            data.description = [""]
+        image = page.xpath("//meta[@property='og:image']/@content")
+        data.image = image[0] if image else ""
+        return data
 
-        try:
-            response = await self.http.get(image, raise_for_status=True)
-            data = await response.read()
-            content_type = response.content_type
-            extension = mimetypes.guess_extension(content_type)
-            image_uri = await self.client.upload_media(
-                data=data,
-                mime_type=content_type,
-                filename=f"image{extension}",
-                size=len(data))
-        except aiohttp.ClientError as e:
-            self.log.error(f"Preparing image: Connection failed: {image}: {e}")
-        except Exception as e:
-            self.log.error(f"Preparing image: Unknown error: {image}: {e}")
+    async def prepare_person_message(self, urls: list[Tuple[str, str, str]]) -> TextMessageEventContent | None:
+        main_result = urls[0]
+        text = await self.get_page_text(main_result[2])
+        if not text:
+            return None
+        person_data = await asyncio.get_event_loop().run_in_executor(None, self.get_person_data, text)
+        if not person_data:
+            return None
+        image_url = await self.get_resized_image_url(person_data.image)
+        image_mxc = await self.get_matrix_image_url(image_url)
 
         body = (
-            f"> ### [{name}]({main_result[2]})  \n> {"  \n>  \n> ".join(description)}  \n"
+            f"> ### [{person_data.name}]({main_result[2]})  \n> {"  \n>  \n> ".join(person_data.description)}  \n"
             f"> \n"
-            f"> > **Roles:** {roles}  \n"
+            f"> > **Roles:** {person_data.roles}  \n"
         )
 
-        html = (
+        html_msg = (
             f"<div>"
             f"<blockquote>"
             f"<a href=\"{main_result[2]}\">"
-            f"<h3>{name}</h3>"
+            f"<h3>{person_data.name}</h3>"
             f"</a>"
-            f"<p>{description[0]}</p>"
+            f"<p>{person_data.description[0]}</p>"
         )
-        if len(description) > 1:
-            html += (
+        if len(person_data.description) > 1:
+            html_msg += (
                 f"<details>"
                 f"<br><summary><b>...</b></summary>"
-                f"<p>{"<br><br>".join(description[1:])}</p>"
+                f"<p>{"<br><br>".join(person_data.description[1:])}</p>"
                 f"</details>"
-        )
-        html += f"<blockquote><b>Roles:</b> {roles}</blockquote>"
-        if image_uri:
-            html += f"<img src=\"{image_uri}\" width=\"300\" /><br>"
+            )
+        html_msg += f"<blockquote><b>Roles:</b> {person_data.roles}</blockquote>"
+        if image_mxc:
+            html_msg += f"<img src=\"{image_mxc}\" width=\"300\" /><br>"
 
         if len(urls) > 1:
             body += f"> **Other results:**  \n"
-            html += (
+            html_msg += (
                 f"<details>"
                 f"<br><summary><b>Other results:</b></summary>"
             )
-            for i in range (1, len(urls)):
+            for i in range(1, len(urls)):
                 body += f"> > {i}. [{urls[i][0]}]({urls[i][2]}) Known for: {urls[i][1]} \n"
-                html += f"<blockquote>{i}. <a href=\"{urls[i][2]}\">{urls[i][0]}</a> Known for: {urls[i][1]}</blockquote>"
-            html+= "</details>"
+                html_msg += f"<blockquote>{i}. <a href=\"{urls[i][2]}\">{urls[i][0]}</a> Known for: {urls[i][1]}</blockquote>"
+            html_msg += "</details>"
 
         body += (
             f"> \n"
             f"> **Results from IMDb**"
         )
-        html += (
+        html_msg += (
             f"<p><b><sub>Results from IMDb</sub></b></p>"
             f"</blockquote>"
             f"</div>"
@@ -293,16 +290,53 @@ class ImdbBot(Plugin):
             msgtype=MessageType.NOTICE,
             format=Format.HTML,
             body=body,
-            formatted_body=html)
+            formatted_body=html_msg)
 
     def get_max_results(self) -> int:
         try:
             max_results = int(self.config.get("max_results", 4))
-            max_results = 1 if max_results < 1 else max_results
+            max_results = max(1, max_results)
         except ValueError:
             self.log.error("Incorrect 'max_results' config value. Setting default value of 4.")
             max_results = 4
         return max_results
+
+    async def get_resized_image_url(self, url: str) -> str:
+        img_base, quality_size, img_extension = url.rsplit(".", 2)
+        if quality_size.startswith("_V1_"):
+            # QL - JPEG quality
+            # 300,444 - width, height
+            quality_size = "_V1_QL90_UX300_CR0,0,300,444_"
+            url = f"{img_base}.{quality_size}.{img_extension}"
+        return url
+
+    async def get_page_text(self, url: str) -> str:
+        timeout = aiohttp.ClientTimeout(total=20)
+        try:
+            response = await self.http.get(url, headers=self.headers, timeout=timeout, raise_for_status=True)
+            text = await response.text()
+        except aiohttp.ClientError as e:
+            self.log.error(f"Scraping IMDb: Connection failed: {e}")
+            return ""
+        return text
+
+    async def get_matrix_image_url(self, url: str) -> str:
+        image_url = ""
+        try:
+            response = await self.http.get(url, raise_for_status=True)
+            data = await response.read()
+            content_type = response.content_type
+            extension = mimetypes.guess_extension(content_type)
+            image_url = await self.client.upload_media(
+                data=data,
+                mime_type=content_type,
+                filename=f"image{extension}",
+                size=len(data))
+        except aiohttp.ClientError as e:
+            self.log.error(f"Preparing image - connection failed: {url}: {e}")
+        except Exception as e:
+            self.log.error(f"Preparing image - unknown error: {url}: {e}")
+        return image_url
 
     @classmethod
     def get_config_class(cls) -> Type[BaseProxyConfig]:
