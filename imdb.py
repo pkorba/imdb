@@ -122,7 +122,7 @@ class ImdbBot(Plugin):
     def get_title_data(self, text: str, video_type: str) -> ImdbTitleData | None:
         data = ImdbTitleData()
         page = html.fromstring(text)
-        if not page:
+        if page is None:
             return None
         info = page.xpath("//meta[@property='og:title']/@content")
         info = info[0] if info else ""
@@ -227,7 +227,7 @@ class ImdbBot(Plugin):
     def get_person_data(self, text: str) -> ImdbPersonData | None:
         data = ImdbPersonData()
         page = html.fromstring(text)
-        if not page:
+        if page is None:
             return None
         info = page.xpath("//meta[@property='og:title']/@content")
         info = info[0].split("|") if info else ""
