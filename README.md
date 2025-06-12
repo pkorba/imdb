@@ -2,8 +2,7 @@
 
 A maubot for Matrix messaging that finds and displays information from IMDb about movies, TV series, and people.
 
-![bot_imdb](https://github.com/user-attachments/assets/0275f587-5139-4c36-b4ce-21534dba4d47)
-
+![bot_imdb](https://github.com/user-attachments/assets/7a58b01f-879d-4b32-8856-e4c79eb7b10e)
 
 ## Usage
 
