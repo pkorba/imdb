@@ -13,12 +13,12 @@ from lxml import html
 class ImdbTitleData:
     def __init__(self) -> None:
         self.title = "",
-        self.rating = "",
+        self.score = "",
         self.tags = ""
         self.video_type = "",
         self.description = "",
-        self.time = "",
-        self.age = "",
+        self.duration = "",
+        self.rating = "",
         self.image = "",
         self.seasons = 0
 
@@ -93,6 +93,15 @@ class ImdbBot(Plugin):
             await evt.reply("Something went wrong when I was preparing summary.")
 
     async def imdb_search(self, query: str, query_type: QueryType) -> list[Tuple[str, str, str]]:
+        """
+        Perform a search in IMDb database
+        :param query: search query
+        :param query_type: title or person
+        :return: list of Tuples. Each tuple contains three values:
+            - title/name
+            - optional information about type of result (e.g. TV series)
+            - URL of the result
+        """
         query = query.replace(" ", "_").lower()
         api_url = f"https://v2.sg.media-imdb.com/suggestion/{query[0]}/{query}.json"
         title_types = ["tvSeries", "short", "movie", "tvMiniSeries"]
@@ -120,6 +129,12 @@ class ImdbBot(Plugin):
         return results_short
 
     def get_title_data(self, text: str, video_type: str) -> ImdbTitleData | None:
+        """
+        Extract information about movie/TV series from text
+        :param text: website content
+        :param video_type: type of video content
+        :return: information about movie/TV series
+        """
         data = ImdbTitleData()
         page = html.fromstring(text)
         if page is None:
@@ -129,17 +144,17 @@ class ImdbBot(Plugin):
         info = info.split("|") if "|" in info else ""
         title = info[0].strip() if info else ""
         data.tags = info[1].strip() if info else ""
-        title_rating = title.split("⭐") if "⭐" in title else ""
-        data.rating = title_rating[1] + "/10" if title_rating else "-/10"
-        data.title = title_rating[0] if title_rating else ""
+        title_score = title.split("⭐") if "⭐" in title else ""
+        data.score = title_score[1] + "/10" if title_score else "-/10"
+        data.title = title_score[0] if title_score else ""
         data.video_type = video_type if video_type != "feature" else "Movie"
         description = page.xpath("//meta[@name='description']/@content")
         data.description = description[0] if description else ""
-        time_age = page.xpath("//meta[@property='og:description']/@content")
-        time_age = time_age[0] if time_age else ""
-        time_age = time_age.split("|") if "|" in time_age else ""
-        data.time = time_age[0].strip() if time_age else "-"
-        data.age = time_age[1].strip() if time_age else "-"
+        duration_rating = page.xpath("//meta[@property='og:description']/@content")
+        duration_rating = duration_rating[0] if duration_rating else ""
+        duration_rating = duration_rating.split("|") if "|" in duration_rating else ""
+        data.duration = duration_rating[0].strip() if duration_rating else "-"
+        data.rating = duration_rating[1].strip() if duration_rating else "-"
         image = page.xpath("//meta[@property='og:image']/@content")
         data.image = image[0] if image else ""
         if video_type[:2].upper() == "TV":
@@ -152,6 +167,14 @@ class ImdbBot(Plugin):
         return data
 
     async def prepare_title_message(self, urls: list[Tuple[str, str, str]]) -> TextMessageEventContent | None:
+        """
+        Prepare message about movie/TV series
+        :param urls: list of tuples. Each tuple contains three values:
+            - title/name
+            - optional information about type of result (e.g. TV series)
+            - URL of the result
+        :return: message ready to be sent to the user
+        """
         main_result = urls[0]
         text = await self.get_page_text(main_result[2])
         if not text:
@@ -165,7 +188,7 @@ class ImdbBot(Plugin):
         body = (
             f"> ### [{title_data.title}]({main_result[2]})\n> {title_data.description}  \n"
             f"> \n"
-            f"> > **Rating:** {title_data.rating} ⭐  \n"
+            f"> > **Score:** {title_data.score} ⭐  \n"
             f"> > **Type:** {title_data.video_type}  \n"
         )
         html_msg = (
@@ -175,7 +198,7 @@ class ImdbBot(Plugin):
             f"<h3>{title_data.title}</h3>"
             f"</a>"
             f"<p>{title_data.description}</p>"
-            f"<blockquote><b>Rating:</b> {title_data.rating} ⭐</blockquote>"
+            f"<blockquote><b>Score:</b> {title_data.score} ⭐</blockquote>"
             f"<blockquote><b>Type:</b> {title_data.video_type}</blockquote>"
         )
         if title_data.seasons:
@@ -184,13 +207,13 @@ class ImdbBot(Plugin):
             body += f"> > **Seasons:** {', '.join(body_seasons)}  \n"
             html_msg += f"<blockquote><b>Seasons:</b> {', '.join(html_seasons)}</blockquote>"
         body += (
-            f"> > **Runtime:** {title_data.time}  \n"
-            f"> > **Age restriction:** {title_data.age}  \n"
+            f"> > **Duration:** {title_data.duration}  \n"
+            f"> > **Rating:** {title_data.rating}  \n"
             f"> > **Tags:** {title_data.tags}  \n"
         )
         html_msg += (
-            f"<blockquote><b>Runtime:</b> {title_data.time}</blockquote>"
-            f"<blockquote><b>Age restriction:</b> {title_data.age}</blockquote>"
+            f"<blockquote><b>Duration:</b> {title_data.duration}</blockquote>"
+            f"<blockquote><b>Rating:</b> {title_data.rating}</blockquote>"
             f"<blockquote><b>Tags:</b> {title_data.tags}</blockquote>"
         )
         if image_mxc:
@@ -225,6 +248,11 @@ class ImdbBot(Plugin):
             formatted_body=html_msg)
 
     def get_person_data(self, text: str) -> ImdbPersonData | None:
+        """
+        Extract information about a person from text
+        :param text: website content
+        :return: information about a person
+        """
         data = ImdbPersonData()
         page = html.fromstring(text)
         if page is None:
@@ -310,6 +338,10 @@ class ImdbBot(Plugin):
             formatted_body=html_msg)
 
     def get_max_results(self) -> int:
+        """
+        Get maximum number of results to return.
+        :return: maximum number of results
+        """
         try:
             max_results = int(self.config.get("max_results", 4))
             max_results = max(1, max_results)
@@ -319,8 +351,14 @@ class ImdbBot(Plugin):
         return max_results
 
     async def get_resized_image_url(self, url: str) -> str:
+        """
+        Append magic sequence of parameters to image URL in order to request resized image.
+        :param url: image URL
+        :return: altered image URL
+        """
         img_base, quality_size, img_extension = url.rsplit(".", 2)
         if quality_size.startswith("_V1_"):
+            # Magic sequence of params that IMDb appends to images
             # QL - JPEG quality
             # 300,444 - width, height
             quality_size = "_V1_QL90_UX300_CR0,0,300,444_"
@@ -328,6 +366,11 @@ class ImdbBot(Plugin):
         return url
 
     async def get_page_text(self, url: str) -> str:
+        """
+        Get page text from URL.
+        :param url: page URL
+        :return: page text
+        """
         timeout = aiohttp.ClientTimeout(total=20)
         try:
             response = await self.http.get(url, headers=self.headers, timeout=timeout, raise_for_status=True)
@@ -338,6 +381,11 @@ class ImdbBot(Plugin):
         return text
 
     async def get_matrix_image_url(self, url: str) -> str:
+        """
+        Download image from external URL and upload it to Matrix
+        :param url: external URL
+        :return: matrix mxc URL
+        """
         image_url = ""
         try:
             response = await self.http.get(url, raise_for_status=True)
