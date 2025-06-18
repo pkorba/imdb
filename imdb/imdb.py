@@ -8,27 +8,7 @@ from mautrix.types import TextMessageEventContent, MessageType, Format
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from typing import Type, Tuple
 from lxml import html
-
-
-class ImdbTitleData:
-    def __init__(self) -> None:
-        self.title = "",
-        self.score = "",
-        self.tags = ""
-        self.video_type = "",
-        self.description = "",
-        self.duration = "",
-        self.rating = "",
-        self.image = "",
-        self.seasons = 0
-
-
-class ImdbPersonData:
-    def __init__(self) -> None:
-        self.name = "",
-        self.roles = "",
-        self.description = "",
-        self.image = ""
+from .resources.datastructures import ImdbTitleData, ImdbPersonData
 
 
 class Config(BaseProxyConfig):
@@ -139,14 +119,18 @@ class ImdbBot(Plugin):
         page = html.fromstring(text)
         if page is None:
             return None
+        score = page.xpath("//a[@aria-label='View User Ratings']")
+        score = score[0].text_content().split("/10") if score else ["", ""]
+        data.votes = score[1]
+        data.score = score[0] + "/10"
+        tags = page.xpath("//div[@data-testid='interests']//a")
+        if tags is not None:
+            data.tags = [tag.text_content() for tag in tags]
         info = page.xpath("//meta[@property='og:title']/@content")
         info = info[0] if info else ""
-        info = info.split("|") if "|" in info else ""
-        title = info[0].strip() if info else ""
-        data.tags = info[1].strip() if info else ""
-        title_score = title.split("⭐") if "⭐" in title else ""
-        data.score = title_score[1] + "/10" if title_score else "-/10"
-        data.title = title_score[0] if title_score else ""
+        title = info[:info.index("|")] if "|" in info else info
+        title_score = title.split("⭐") if "⭐" in title else [title]
+        data.title = title_score[0]
         data.video_type = video_type if video_type != "feature" else "Movie"
         description = page.xpath("//meta[@name='description']/@content")
         data.description = description[0] if description else ""
@@ -185,52 +169,50 @@ class ImdbBot(Plugin):
         image_url = await self.get_resized_image_url(title_data.image)
         image_mxc = await self.get_matrix_image_url(image_url)
 
-        body = (
-            f"> ### [{title_data.title}]({main_result[2]})\n> {title_data.description}  \n"
-            f"> \n"
-            f"> > **Score:** {title_data.score} ⭐  \n"
-            f"> > **Type:** {title_data.video_type}  \n"
-        )
+        body = f"> ### [{title_data.title}]({main_result[2]})\n> {title_data.description}  \n>  \n"
         html_msg = (
-            f"<div>"
-            f"<blockquote>"
-            f"<a href=\"{main_result[2]}\">"
-            f"<h3>{title_data.title}</h3>"
-            f"</a>"
+            f"<blockquote><table><tr><td>"
+            f"<a href=\"{main_result[2]}\"><h3>{title_data.title}</h3></a>"
             f"<p>{title_data.description}</p>"
-            f"<blockquote><b>Score:</b> {title_data.score} ⭐</blockquote>"
-            f"<blockquote><b>Type:</b> {title_data.video_type}</blockquote>"
+            f"</td><td>"
         )
+        if image_mxc:
+            html_msg += f"<br><img src=\"{image_mxc}\" height=\"200\" /></p>"
+        html_msg += "</td></tr><tr><td><br>"
+        if title_data.score != "/10":
+            body += f"> > **Score:** ⭐ {title_data.score} - {title_data.votes} votes  \n>  \n"
+            html_msg += f"<blockquote><b>Score:</b> ⭐ {title_data.score} - {title_data.votes} votes</blockquote>"
+        else:
+            body += f"> > **Not released yet**  \n>  \n"
+            html_msg += f"<blockquote><b>Not released yet</b></blockquote>"
+
+        body += f"> > **Type:** {title_data.video_type}  \n>  \n"
+        html_msg += f"<blockquote><b>Type:</b> {title_data.video_type}</blockquote>"
         if title_data.seasons:
             body_seasons = [f"[{i + 1}]({main_result[2]}episodes/?season={i + 1})" for i in range(0, title_data.seasons)]
             html_seasons = [f"<a href=\"{main_result[2]}episodes/?season={i + 1}\">{i + 1}</a>" for i in range(0, title_data.seasons)]
-            body += f"> > **Seasons:** {', '.join(body_seasons)}  \n"
+            body += f"> > **Seasons:** {', '.join(body_seasons)}  \n>  \n"
             html_msg += f"<blockquote><b>Seasons:</b> {', '.join(html_seasons)}</blockquote>"
         body += (
-            f"> > **Duration:** {title_data.duration}  \n"
-            f"> > **Rating:** {title_data.rating}  \n"
-            f"> > **Tags:** {title_data.tags}  \n"
+            f"> > **Duration:** {title_data.duration}  \n>  \n"
+            f"> > **Rating:** {title_data.rating}  \n>  \n"
+            f"> > **Tags:** {", ".join(title_data.tags)}  \n>  \n"
         )
         html_msg += (
             f"<blockquote><b>Duration:</b> {title_data.duration}</blockquote>"
             f"<blockquote><b>Rating:</b> {title_data.rating}</blockquote>"
-            f"<blockquote><b>Tags:</b> {title_data.tags}</blockquote>"
+            f"<blockquote><b>Tags:</b> {", ".join(title_data.tags)}</blockquote>"
+            f"</td><td>"
         )
-        if image_mxc:
-            html_msg += f"<img src=\"{image_mxc}\" width=\"300\" /><br>"
-
         if len(urls) > 1:
             body += f"> **Other results:**  \n"
-            html_msg += (
-                f"<details>"
-                f"<br><summary><b>Other results:</b></summary>"
-            )
+            html_msg += f"<br><b>Other results:</b>"
+
             for i in range(1, len(urls)):
                 video_type_other = main_result[1] if main_result[1] != "feature" else "Movie"
-                body += f"> > {i}. [{urls[i][0]}]({urls[i][2]}) ({video_type_other}) \n"
+                body += f"> > {i}. [{urls[i][0]}]({urls[i][2]}) ({video_type_other}) \n>  \n"
                 html_msg += f"<blockquote>{i}. <a href=\"{urls[i][2]}\">{urls[i][0]}</a> ({video_type_other})</blockquote>"
-            html_msg += "</details>"
-
+        html_msg += "</td></tr></table>"
         body += (
             f"> \n"
             f"> **Results from IMDb**"
@@ -238,7 +220,6 @@ class ImdbBot(Plugin):
         html_msg += (
             f"<p><b><sub>Results from IMDb</sub></b></p>"
             f"</blockquote>"
-            f"</div>"
         )
 
         return TextMessageEventContent(
@@ -286,9 +267,8 @@ class ImdbBot(Plugin):
         image_mxc = await self.get_matrix_image_url(image_url)
 
         body = (
-            f"> ### [{person_data.name}]({main_result[2]})  \n> {"  \n>  \n> ".join(person_data.description)}  \n"
-            f"> \n"
-            f"> > **Roles:** {person_data.roles}  \n"
+            f"> ### [{person_data.name}]({main_result[2]})  \n> {"  \n>  \n> ".join(person_data.description)}  \n> \n"
+            f"> > **Roles:** {person_data.roles}  \n>  \n"
         )
 
         html_msg = (
@@ -308,18 +288,18 @@ class ImdbBot(Plugin):
             )
         html_msg += f"<blockquote><b>Roles:</b> {person_data.roles}</blockquote>"
         if image_mxc:
-            html_msg += f"<img src=\"{image_mxc}\" width=\"300\" /><br>"
+            html_msg += f"<img src=\"{image_mxc}\" width=\"300\" height=\"444\" /><br>"
 
         if len(urls) > 1:
             body += f"> **Other results:**  \n"
             html_msg += (
-                f"<details>"
-                f"<br><summary><b>Other results:</b></summary>"
+                f"<p><details>"
+                f"<summary><b>Other results:</b></summary>"
             )
             for i in range(1, len(urls)):
-                body += f"> > {i}. [{urls[i][0]}]({urls[i][2]}) Known for: {urls[i][1]} \n"
+                body += f"> > {i}. [{urls[i][0]}]({urls[i][2]}) Known for: {urls[i][1]}  \n>  \n"
                 html_msg += f"<blockquote>{i}. <a href=\"{urls[i][2]}\">{urls[i][0]}</a> Known for: {urls[i][1]}</blockquote>"
-            html_msg += "</details>"
+            html_msg += "</details></p>"
 
         body += (
             f"> \n"
@@ -328,7 +308,6 @@ class ImdbBot(Plugin):
         html_msg += (
             f"<p><b><sub>Results from IMDb</sub></b></p>"
             f"</blockquote>"
-            f"</div>"
         )
 
         return TextMessageEventContent(
