@@ -35,9 +35,9 @@ class ImdbBot(Plugin):
         await evt.mark_read()
         title = title.strip()
         if not title:
-            await evt.reply("**Usage:**  \n"
-                            "!imdb <title>  \n"
-                            "!imdb person <name>")
+            await evt.reply("> **Usage:**  \n"
+                            "> !imdb <title>  \n"
+                            "> !imdb person <name>")
             return
 
         urls = await self.imdb_search(title, self.QueryType.title)
@@ -57,8 +57,8 @@ class ImdbBot(Plugin):
         await evt.mark_read()
         name = name.strip()
         if not name:
-            await evt.reply("**Usage:**  \n"
-                            "!imdb person <name>")
+            await evt.reply("> **Usage:**  \n"
+                            "> !imdb person <name>")
             return
 
         urls = await self.imdb_search(name, self.QueryType.person)
