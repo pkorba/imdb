@@ -1,6 +1,6 @@
 # IMDb Bot
 
-A maubot for Matrix messaging that finds and displays information from IMDb about movies, TV series, and people.
+A maubot plugin that finds and displays information from IMDb about movies, TV series, and people.
 
 ![bot_imdb](https://github.com/user-attachments/assets/a5b1ffe2-bac6-4f02-9b6a-f8c959950e06)
 
@@ -8,12 +8,12 @@ A maubot for Matrix messaging that finds and displays information from IMDb abou
 
 Type the title of the show you'd like to see to find movies or TV series:
 ```
-[p]imdb <title>
+!imdb <title>
 ```
 
 You can use `person` subcommand to find information about people:
 ```
-[p]imdb person <name>
+!imdb person <name>
 ```
 
 ## Configuration
