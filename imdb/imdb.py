@@ -21,7 +21,7 @@ class ImdbBot(Plugin):
             "Sec-GPC": "1",
             "accept-encoding": "gzip, deflate, br, zstd",
             "accept-language": "en,en-US;q=0.5",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0"
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0"
         }
     QueryType = Enum("QueryType", [("title", 1), ("person", 2)])
 
@@ -183,8 +183,8 @@ class ImdbBot(Plugin):
             body += f"> > **Score:** ⭐ {title_data.score} - {title_data.votes} votes  \n>  \n"
             html_msg += f"<blockquote><b>Score:</b> ⭐ {title_data.score} - {title_data.votes} votes</blockquote>"
         else:
-            body += f"> > **Not released yet**  \n>  \n"
-            html_msg += f"<blockquote><b>Not released yet</b></blockquote>"
+            body += "> > **Not released yet**  \n>  \n"
+            html_msg += "<blockquote><b>Not released yet</b></blockquote>"
 
         body += f"> > **Type:** {title_data.video_type}  \n>  \n"
         html_msg += f"<blockquote><b>Type:</b> {title_data.video_type}</blockquote>"
@@ -205,8 +205,8 @@ class ImdbBot(Plugin):
             f"</td><td>"
         )
         if len(urls) > 1:
-            body += f"> **Other results:**  \n"
-            html_msg += f"<br><b>Other results:</b>"
+            body += "> **Other results:**  \n"
+            html_msg += "<br><b>Other results:</b>"
 
             for i in range(1, len(urls)):
                 video_type_other = main_result[1] if main_result[1] != "feature" else "Movie"
@@ -214,12 +214,12 @@ class ImdbBot(Plugin):
                 html_msg += f"<blockquote>{i}. <a href=\"{urls[i][2]}\">{urls[i][0]}</a> ({video_type_other})</blockquote>"
         html_msg += "</td></tr></table>"
         body += (
-            f"> \n"
-            f"> **Results from IMDb**"
+            "> \n"
+            "> **Results from IMDb**"
         )
         html_msg += (
-            f"<p><b><sub>Results from IMDb</sub></b></p>"
-            f"</blockquote>"
+            "<p><b><sub>Results from IMDb</sub></b></p>"
+            "</blockquote>"
         )
 
         return TextMessageEventContent(
@@ -291,10 +291,10 @@ class ImdbBot(Plugin):
             html_msg += f"<img src=\"{image_mxc}\" width=\"300\" height=\"444\" /><br>"
 
         if len(urls) > 1:
-            body += f"> **Other results:**  \n"
+            body += "> **Other results:**  \n"
             html_msg += (
-                f"<p><details>"
-                f"<summary><b>Other results:</b></summary>"
+                "<p><details>"
+                "<summary><b>Other results:</b></summary>"
             )
             for i in range(1, len(urls)):
                 body += f"> > {i}. [{urls[i][0]}]({urls[i][2]}) Known for: {urls[i][1]}  \n>  \n"
@@ -302,12 +302,12 @@ class ImdbBot(Plugin):
             html_msg += "</details></p>"
 
         body += (
-            f"> \n"
-            f"> **Results from IMDb**"
+            "> \n"
+            "> **Results from IMDb**"
         )
         html_msg += (
-            f"<p><b><sub>Results from IMDb</sub></b></p>"
-            f"</blockquote>"
+            "<p><b><sub>Results from IMDb</sub></b></p>"
+            "</blockquote>"
         )
 
         return TextMessageEventContent(

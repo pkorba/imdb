@@ -20,4 +20,4 @@ class ImdbPersonData:
     name: str = "",
     roles: str = "",
     description: list[str] = [],
-    image: str  = ""
+    image: str = ""
